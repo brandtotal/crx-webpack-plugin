@@ -40,8 +40,11 @@ function Plugin(options) {
 // hook into webpack
 Plugin.prototype.apply = function (compiler) {
   var self = this;
-  return compiler.plugin('done', function () {
-    self.package.call(self);
+
+  compiler.plugin('after-emit', (compilation, cb) => {
+    this.package().then(() => {
+      cb();
+    });
   });
 }
 
@@ -61,13 +64,23 @@ Plugin.prototype.package = function () {
     });
   }
 
-  self.crx.load(loadParam).then(function () {
-    self.crx.pack().then(function (buffer) {
+  return self.crx.load(loadParam).then(function () {
+    return self.crx.pack();
+  }).then(function (buffer) {
+    return new Promise((res, rej) => {
       mkdirp(self.outputPath, function (err) {
-        if (err) throw (err)
+        if (err) { rej(err); return; }
+
         var updateXML = self.crx.generateUpdateXML();
-        fs.writeFile(self.updateFile, updateXML);
-        fs.writeFile(self.crxFile, buffer);
+        fs.writeFile(self.updateFile, updateXML, function (err) {
+          if (err) { rej(err); return; }
+
+          fs.writeFile(self.crxFile, buffer, function (err) {
+            if (err) { rej(err); return; }
+
+            res();
+          });
+        });
       });
     });
   });
